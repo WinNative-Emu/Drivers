@@ -6,7 +6,13 @@ nocolor='\033[0m'
 deps="git meson ninja patchelf unzip curl pip flex bison zip glslang glslangValidator"
 workdir="$(pwd)/turnip_workdir"
 ndkver="android-ndk-r26d"
-ndk="/home/max/Build/Turnip/$ndkver/toolchains/llvm/prebuilt/linux-x86_64/bin"
+if [ -n "${ANDROID_NDK_HOME:-}" ]; then
+	ndk="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+elif [ -n "${NDK_BIN:-}" ]; then
+	ndk="$NDK_BIN"
+else
+	ndk="/home/max/Build/Turnip/$ndkver/toolchains/llvm/prebuilt/linux-x86_64/bin"
+fi
 sdkver="34"
 mesasrc="https://gitlab.freedesktop.org/mesa/mesa"
 srcfolder="mesa"

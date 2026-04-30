@@ -1,0 +1,158 @@
+name: Build WN-Turnip Drivers
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA or branch to build & release (manual re-run for any commit GitHub Actions evicted from the pending slot)"
+        required: false
+        default: main
+
+# Main pushes serialize via the build-main group (cancel-in-progress: false)
+# so the version-bump arithmetic is race-free. Trade-off: if 3+ pushes land
+# inside the build window of an earlier run, GitHub Actions retains only the
+# newest pending slot and silently cancels the middle one. Use the
+# workflow_dispatch input above to manually rebuild any evicted commit.
+# PRs use a per-PR group with cancel-in-progress: true so only the latest
+# push to a PR branch is built.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.pull_request.number) || 'build-main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      build_version: ${{ steps.ver.outputs.build_version }}
+      tag_name: ${{ steps.ver.outputs.tag_name }}
+      release: ${{ steps.ver.outputs.release }}
+      head_sha: ${{ steps.ver.outputs.head_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Resolve build version from tags
+        id: ver
+        run: |
+          set -euo pipefail
+          git fetch --tags --quiet
+
+          # Pin the SHA we actually checked out (not github.sha, which differs
+          # under workflow_dispatch + inputs.ref).
+          head_sha=$(git rev-parse HEAD)
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+
+          # Refuse to re-release a commit that already carries a vMAJOR.MINOR tag.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            existing=$(git tag --points-at "${head_sha}" --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | head -n1 || true)
+            if [ -n "${existing:-}" ]; then
+              echo "::error::Commit ${head_sha} is already tagged ${existing}; refusing duplicate release."
+              exit 1
+            fi
+          fi
+
+          # Match exactly vMAJOR.MINOR (no patch suffix, no prerelease).
+          latest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -n1 | sed 's/^v//' || true)
+          if [ -z "${latest:-}" ]; then
+            next_base="1.0"
+          else
+            major="${latest%.*}"
+            minor="${latest#*.}"
+            minor=$((minor + 1))
+            if [ "$minor" -ge 10 ]; then
+              major=$((major + 1))
+              minor=0
+            fi
+            next_base="${major}.${minor}"
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            build_ver="${next_base}-PR${{ github.event.pull_request.number }}"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            build_ver="${next_base}"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
+          fi
+          # If a previous run partially created the same tag without a release,
+          # bail out so we don't double-create.
+          if [ "${{ github.event_name }}" != "pull_request" ] && git rev-parse "v${next_base}" >/dev/null 2>&1; then
+            echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
+            exit 1
+          fi
+          echo "build_version=${build_ver}" >> "$GITHUB_OUTPUT"
+          echo "Resolved build version: ${build_ver}"
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            meson ninja-build patchelf unzip curl python3-pip flex bison zip \
+            glslang-tools ccache
+          python3 -m pip install --quiet --break-system-packages mako
+
+      - name: Set up Android NDK r26d
+        id: ndk
+        # nttld/setup-ndk v1.5.0
+        uses: nttld/setup-ndk@afb4c9964b521afb97c864b7d40b11e6911bd410
+        with:
+          ndk-version: r26d
+          add-to-path: false
+          local-cache: true
+
+      - name: Build -b and -p variants
+        env:
+          BUILD_VERSION: ${{ steps.ver.outputs.build_version }}
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: ./build_wn_turnip.sh
+
+      - name: Verify output zips exist
+        run: |
+          ls -lh "WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip" \
+                  "WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx.zip"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WN-Turnip-${{ steps.ver.outputs.build_version }}
+          path: |
+            WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip
+            WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: WN-Turnip-${{ needs.build.outputs.build_version }}
+
+      - name: Create GitHub Release
+        # softprops/action-gh-release v2.0.8
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
+        with:
+          tag_name: ${{ needs.build.outputs.tag_name }}
+          name: WN-Turnip ${{ needs.build.outputs.build_version }}
+          target_commitish: ${{ needs.build.outputs.head_sha }}
+          files: |
+            WN-Turnip-${{ needs.build.outputs.build_version }}-b_Axxx.zip
+            WN-Turnip-${{ needs.build.outputs.build_version }}-p_Axxx.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: true

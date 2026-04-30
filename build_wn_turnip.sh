@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-export BUILD_VERSION="1.0"
+export BUILD_VERSION="${BUILD_VERSION:-1.0}"
 export EXTRA_PATCH=""
 export EXTRA_SCRIPT="patches/fix_gralloc_flushall.py:patches/fix_a8xx_dev_info.py:patches/apply_a8xx_gpus.py:patches/apply_a7xx_gen1_quirks.py:patches/apply_a7xx_gen2_ubwc_hint.py:patches/disable_64b_image_atomics.py"
 
