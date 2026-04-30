@@ -167,4 +167,4 @@ jobs:
             WN-Turnip-${{ needs.build.outputs.build_version }}-p_Axxx.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
-          make_latest: true
+          make_latest: false
