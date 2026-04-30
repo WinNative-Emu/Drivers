@@ -1,0 +1,24 @@
+# build artifacts
+turnip_workdir/
+build_log_*.txt
+mesa_hash.txt
+
+# packaged drivers
+WN-Turnip-*_Axxx.zip
+*.zip
+
+# changelog (private)
+CHANGELOG.md
+
+# python bytecode
+__pycache__/
+*.pyc
+
+# editor
+*.swp
+.idea/
+.vscode/
+
+# os junk
+.DS_Store
+Thumbs.db
