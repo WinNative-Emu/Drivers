@@ -1,4 +1,5 @@
 #!/bin/bash -e
+set -o pipefail
 #
 # WN-Turnip production build driver — produces both balanced (b) and
 # performance (p) variants from latest upstream mesa main with the WinNative
