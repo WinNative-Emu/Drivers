@@ -8,19 +8,22 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Commit SHA or branch to build & release (manual re-run for any commit GitHub Actions evicted from the pending slot)"
+        description: "Commit SHA or branch to build & release"
         required: false
         default: main
 
-# Main pushes serialize via the build-main group (cancel-in-progress: false)
-# so the version-bump arithmetic is race-free. Trade-off: if 3+ pushes land
-# inside the build window of an earlier run, GitHub Actions retains only the
-# newest pending slot and silently cancels the middle one. Use the
-# workflow_dispatch input above to manually rebuild any evicted commit.
-# PRs use a per-PR group with cancel-in-progress: true so only the latest
-# push to a PR branch is built.
+# Releases happen ONLY on manual workflow_dispatch. PRs and main pushes
+# build artifacts (preview the next version label) but never tag, never
+# release, never advance the version.
+#
+# - PR: per-PR concurrency group, cancel-in-progress so only the latest
+#   push to a PR branch is built.
+# - Push to main: per-run concurrency (each push runs independently,
+#   no eviction risk because no shared state is mutated).
+# - workflow_dispatch: serialize on `build-release` so two manual
+#   dispatches can't race on tag creation.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.pull_request.number) || 'build-main' }}
+  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && 'build-release' || format('build-push-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -48,19 +51,10 @@ jobs:
           set -euo pipefail
           git fetch --tags --quiet
 
-          # Pin the SHA we actually checked out (not github.sha, which differs
-          # under workflow_dispatch + inputs.ref).
+          # Pin the SHA we actually checked out (not github.sha, which
+          # differs under workflow_dispatch + inputs.ref).
           head_sha=$(git rev-parse HEAD)
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
-
-          # Refuse to re-release a commit that already carries a vMAJOR.MINOR tag.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            existing=$(git tag --points-at "${head_sha}" --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | head -n1 || true)
-            if [ -n "${existing:-}" ]; then
-              echo "::error::Commit ${head_sha} is already tagged ${existing}; refusing duplicate release."
-              exit 1
-            fi
-          fi
 
           # Match exactly vMAJOR.MINOR (no patch suffix, no prerelease).
           latest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -n1 | sed 's/^v//' || true)
@@ -76,20 +70,36 @@ jobs:
             fi
             next_base="${major}.${minor}"
           fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            build_ver="${next_base}-PR${{ github.event.pull_request.number }}"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          else
-            build_ver="${next_base}"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
-          fi
-          # If a previous run partially created the same tag without a release,
-          # bail out so we don't double-create.
-          if [ "${{ github.event_name }}" != "pull_request" ] && git rev-parse "v${next_base}" >/dev/null 2>&1; then
-            echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
-            exit 1
-          fi
+
+          case "${{ github.event_name }}" in
+            pull_request)
+              # PR preview build — never releases, never tags.
+              build_ver="${next_base}-PR${{ github.event.pull_request.number }}"
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              ;;
+            push)
+              # Auto build on merge — preview the next version label only.
+              # Never tags, never releases, never advances the version.
+              build_ver="${next_base}"
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_dispatch)
+              # Manual release build — refuse to re-release a commit that
+              # already carries a vMAJOR.MINOR tag.
+              existing=$(git tag --points-at "${head_sha}" --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | head -n1 || true)
+              if [ -n "${existing:-}" ]; then
+                echo "::error::Commit ${head_sha} is already tagged ${existing}; refusing duplicate release."
+                exit 1
+              fi
+              if git rev-parse "v${next_base}" >/dev/null 2>&1; then
+                echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
+                exit 1
+              fi
+              build_ver="${next_base}"
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
           echo "build_version=${build_ver}" >> "$GITHUB_OUTPUT"
           echo "Resolved build version: ${build_ver}"
 
@@ -135,7 +145,7 @@ jobs:
 
   release:
     needs: build
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.outputs.release == 'true'
+    if: github.event_name == 'workflow_dispatch' && needs.build.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
