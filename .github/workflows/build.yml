@@ -113,13 +113,21 @@ jobs:
           ls -lh "WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip" \
                   "WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx.zip"
 
-      - name: Upload build artifacts
+      # Upload -b and -p as SEPARATE artifacts. A single multi-file artifact is
+      # bundled by GitHub into one .zip; separate names keep the variants apart.
+      - name: Upload -b artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WN-Turnip-${{ steps.ver.outputs.build_version }}
-          path: |
-            WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip
-            WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx.zip
+          name: WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx
+          path: WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload -p artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx
+          path: WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -133,7 +141,8 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: WN-Turnip-${{ needs.build.outputs.build_version }}
+          pattern: WN-Turnip-${{ needs.build.outputs.build_version }}-*_Axxx
+          merge-multiple: true
 
       - name: Create GitHub Release
         # softprops/action-gh-release v2.0.8
