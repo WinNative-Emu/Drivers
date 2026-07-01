@@ -222,12 +222,14 @@ at_changed = False
 
 old_dc = "if (cmd_buffer->state.rp.drawcall_count > 5)"
 new_dc = "if (cmd_buffer->state.rp.drawcall_count > 10)"
-if old_dc in autotune:
+if new_dc in autotune:
+    print(f"  {AUTOTUNE_FILE}: drawcall threshold already at 10")
+elif old_dc in autotune:
     autotune = autotune.replace(old_dc, new_dc)
     at_changed = True
     print(f"  {AUTOTUNE_FILE}: raised drawcall threshold 5 -> 10")
-elif "> 10)" in autotune:
-    print(f"  {AUTOTUNE_FILE}: drawcall threshold already raised")
+else:
+    print(f"  {AUTOTUNE_FILE}: '> 5' drawcall anchor absent (upstream restructured) — skipping threshold tweak")
 
 old_bw = "gmem_bandwidth = (gmem_bandwidth * 11 + total_draw_call_bandwidth) / 10;"
 new_bw = "gmem_bandwidth = (gmem_bandwidth * 10 + total_draw_call_bandwidth) / 10;"

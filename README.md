@@ -74,8 +74,18 @@ Adrenotools-aware launchers (e.g. WinNative, Winlator) can import each `.zip` di
 │   ├── apply_balance_variant.py
 │   ├── apply_perf_variant.py
 │   └── disable_64b_image_atomics.py
+├── MAINTENANCE.md            # per-patch upstream status + re-verify checklist
 └── LICENSE
 ```
+
+## Upstream & contributing
+
+Development happens on the fork [`maxjivi05/Drivers`](https://github.com/maxjivi05/Drivers)
+and is contributed to the main repo
+[`WinNative-Emu/Drivers`](https://github.com/WinNative-Emu/Drivers) via pull request.
+Because the build always tracks upstream Mesa main, the `patches/` scripts are written
+to adapt as upstream changes — see [`MAINTENANCE.md`](MAINTENANCE.md) for each patch's
+current status, what upstream has absorbed, and how to re-verify on a Mesa bump.
 
 ## License
 

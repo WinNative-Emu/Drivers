@@ -1,37 +1,9 @@
 #!/usr/bin/env python3
 """
-Idempotent fixes for A840/A8XX critical issues:
-1. Remove forced TU_DEBUG_FLUSHALL for gen8 (kills performance)
-2. Bypass gmsm magic check in gralloc (fixes horizontal line shredding)
-
-Safe to run multiple times.
+Bypass the legacy 'gmsm' gralloc magic check so UBWC buffers are detected on
+newer Qualcomm gralloc (A8XX/A840). Idempotent.
 """
 import sys
-
-# ── Fix 1: Remove TU_DEBUG_FLUSHALL ──────────────────────────────────────────
-
-TU_DEVICE = "src/freedreno/vulkan/tu_device.cc"
-
-with open(TU_DEVICE, "r") as f:
-    content = f.read()
-
-if "TU_DEBUG_FLUSHALL" in content:
-    lines = content.split("\n")
-    new_lines = []
-    for line in lines:
-        if "gen8 TODO" in line and "/*" in line:
-            continue
-        if "TU_DEBUG_FLUSHALL" in line:
-            continue
-        new_lines.append(line)
-    content = "\n".join(new_lines)
-    with open(TU_DEVICE, "w") as f:
-        f.write(content)
-    print(f"  {TU_DEVICE}: removed TU_DEBUG_FLUSHALL for gen8")
-else:
-    print(f"  {TU_DEVICE}: TU_DEBUG_FLUSHALL already removed")
-
-# ── Fix 2: Bypass gmsm gralloc magic check ───────────────────────────────────
 
 GRALLOC = "src/util/u_gralloc/u_gralloc_fallback.c"
 
