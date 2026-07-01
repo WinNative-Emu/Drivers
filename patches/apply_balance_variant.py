@@ -18,12 +18,14 @@ changes = False
 # Raise drawcall threshold from 5 to 7
 OLD_DC = "if (cmd_buffer->state.rp.drawcall_count > 5)"
 NEW_DC = "if (cmd_buffer->state.rp.drawcall_count > 7)"
-if OLD_DC in content:
+if NEW_DC in content:
+    print(f"  {AUTOTUNE_FILE}: drawcall threshold already at 7")
+elif OLD_DC in content:
     content = content.replace(OLD_DC, NEW_DC)
     changes = True
     print(f"  {AUTOTUNE_FILE}: raised drawcall threshold 5 -> 7")
-elif "> 7)" in content:
-    print(f"  {AUTOTUNE_FILE}: drawcall threshold already raised")
+else:
+    print(f"  {AUTOTUNE_FILE}: '> 5' drawcall anchor absent (upstream restructured) — skipping threshold tweak")
 
 # Reduce GMEM bandwidth multiplier from 11 to 10
 OLD_BW = "gmem_bandwidth = (gmem_bandwidth * 11 + total_draw_call_bandwidth) / 10;"
