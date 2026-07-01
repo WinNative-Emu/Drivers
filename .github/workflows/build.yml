@@ -1,6 +1,9 @@
 name: Build WN-Turnip Drivers
 
 on:
+  schedule:
+    # Weekly on Wednesday 12:00 UTC (first run 2026-07-08).
+    - cron: '0 12 * * 3'
   pull_request:
     branches: [main]
   push:
@@ -12,18 +15,10 @@ on:
         required: false
         default: main
 
-# Releases happen ONLY on manual workflow_dispatch. PRs and main pushes
-# build artifacts (preview the next version label) but never tag, never
-# release, never advance the version.
-#
-# - PR: per-PR concurrency group, cancel-in-progress so only the latest
-#   push to a PR branch is built.
-# - Push to main: per-run concurrency (each push runs independently,
-#   no eviction risk because no shared state is mutated).
-# - workflow_dispatch: serialize on `build-release` so two manual
-#   dispatches can't race on tag creation.
+# schedule + workflow_dispatch release (tag + GitHub release, version bumped);
+# PR and push only build a preview. Release events serialize on build-release.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && 'build-release' || format('build-push-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.pull_request.number) || (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 'build-release' || format('build-push-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -45,52 +40,37 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}
           persist-credentials: false
 
-      - name: Resolve build version from tags
+      - name: Resolve build version
         id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch --tags --quiet
-
-          # Pin the SHA we actually checked out (not github.sha, which
-          # differs under workflow_dispatch + inputs.ref).
           head_sha=$(git rev-parse HEAD)
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
 
-          # Match exactly vMAJOR.MINOR (no patch suffix, no prerelease).
-          latest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -n1 | sed 's/^v//' || true)
+          # Next version = latest PUBLISHED v1.NN release + 1 (zero-padded, floor 1.03).
+          latest=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                     --jq '.[] | select(.draft==false and .prerelease==false) | .tag_name' 2>/dev/null \
+                   | grep -E '^v1\.[0-9]{2}$' | sort -V | tail -n1 | sed 's/^v//' || true)
           if [ -z "${latest:-}" ]; then
-            next_base="1.0"
+            next_base="1.03"
           else
-            major="${latest%.*}"
-            minor="${latest#*.}"
-            minor=$((minor + 1))
-            if [ "$minor" -ge 10 ]; then
-              major=$((major + 1))
-              minor=0
-            fi
-            next_base="${major}.${minor}"
+            n=$((10#${latest#1.}))
+            next_base=$(printf '1.%02d' "$((n + 1))")
           fi
 
           case "${{ github.event_name }}" in
             pull_request)
-              # PR preview build — never releases, never tags.
               build_ver="${next_base}-PR${{ github.event.pull_request.number }}"
               echo "release=false" >> "$GITHUB_OUTPUT"
               ;;
             push)
-              # Auto build on merge — preview the next version label only.
-              # Never tags, never releases, never advances the version.
               build_ver="${next_base}"
               echo "release=false" >> "$GITHUB_OUTPUT"
               ;;
-            workflow_dispatch)
-              # Manual release build — refuse to re-release a commit that
-              # already carries a vMAJOR.MINOR tag.
-              existing=$(git tag --points-at "${head_sha}" --list 'v*' | grep -E '^v[0-9]+\.[0-9]+$' | head -n1 || true)
-              if [ -n "${existing:-}" ]; then
-                echo "::error::Commit ${head_sha} is already tagged ${existing}; refusing duplicate release."
-                exit 1
-              fi
+            schedule|workflow_dispatch)
               if git rev-parse "v${next_base}" >/dev/null 2>&1; then
                 echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
                 exit 1
@@ -101,7 +81,7 @@ jobs:
               ;;
           esac
           echo "build_version=${build_ver}" >> "$GITHUB_OUTPUT"
-          echo "Resolved build version: ${build_ver}"
+          echo "Resolved build version: ${build_ver} (event=${{ github.event_name }})"
 
       - name: Install host build dependencies
         run: |
@@ -145,7 +125,7 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && needs.build.outputs.release == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.build.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

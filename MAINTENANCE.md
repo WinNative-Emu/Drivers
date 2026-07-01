@@ -51,11 +51,18 @@ All `patches/*.py` are idempotent and safe to re-run.
 ## Versioning
 
 Releases use the scheme **`v1.NN`** — a two-digit, zero-padded counter after
-`1.` (`v1.03`, `v1.04` … `v1.99`). The CI (`.github/workflows/build.yml`) reads
-the latest `v1.NN` tag and bumps the counter by one; with no tag yet it floors at
-`1.03` (the first manually-shipped build). Only manual `workflow_dispatch` runs
-tag + release; PR/push runs build a preview label only. To seed history, tag the
-already-shipped build `v1.03` and CI will roll the next release to `1.04`.
+`1.` (`v1.03`, `v1.04` … `v1.99`). The next version is **the latest published
+`v1.NN` release + 1** (draft/prerelease releases are ignored); with no release
+yet it floors at `1.03`. So `1.02` released → next `1.03`, `1.09` → `1.10`, etc.
+
+The CI (`.github/workflows/build.yml`):
+- **Weekly schedule** (`cron: '0 12 * * 3'`, Wednesdays 12:00 UTC, first run
+  2026-07-08) builds `-b`/`-p` from latest mesa main and **tags + releases** the
+  bumped version. Runs every week regardless of whether this repo changed, since
+  mesa main advances on its own.
+- **`workflow_dispatch`** does the same on demand.
+- **PR / push** build a preview label only — never tag, never release.
+
 Local builds set the label directly, e.g. `BUILD_VERSION=1.03 ./build_wn_turnip.sh`.
 
 ## Repository / contribution flow
