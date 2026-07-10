@@ -157,3 +157,27 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           make_latest: true
+
+      # Also mirror both variants to the shared WinNative-Components release.
+      # Needs a COMPONENTS_TOKEN secret (PAT with contents:write on that repo);
+      # skips cleanly if the secret is absent.
+      - name: Mirror -b/-p to WinNative-Components
+        env:
+          GH_TOKEN: ${{ secrets.COMPONENTS_TOKEN }}
+          VER: ${{ needs.build.outputs.build_version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::COMPONENTS_TOKEN not set — skipping WinNative-Components mirror."
+            exit 0
+          fi
+          repo="nicholasx417/WinNative-Components"
+          tag="WinNative-Turnip"
+          gh release view "$tag" --repo "$repo" >/dev/null 2>&1 \
+            || gh release create "$tag" --repo "$repo" \
+                 --title "WinNative Turnip Drivers" \
+                 --notes "Rolling WinNative Turnip driver uploads."
+          gh release upload "$tag" \
+            "WN-Turnip-${VER}-b_Axxx.zip" \
+            "WN-Turnip-${VER}-p_Axxx.zip" \
+            --repo "$repo" --clobber
