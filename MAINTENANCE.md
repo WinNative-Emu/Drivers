@@ -88,13 +88,40 @@ The CI (`.github/workflows/build.yml`):
   2026-07-08) builds `-b`/`-p` from latest mesa main and **tags + releases** the
   bumped version. Runs every week regardless of whether this repo changed, since
   mesa main advances on its own.
-- **`workflow_dispatch`** takes a `publish` input, default **false**. Left false it is a
-  **draft run**: both variants are built and uploaded as artifacts under their normal
-  `WN-Turnip-<ver>-{b,p}_Axxx.zip` names, and nothing is tagged or released. Set it true
-  to cut an actual release. Screening builds should always leave it false.
+- **`workflow_dispatch`** takes a `publish` input, default **false**. Either way the
+  release is created with both zips and generated notes attached; `publish=false` creates
+  it as a **GitHub draft**, so no git tag exists until someone hits Publish, and the
+  WinNative-Components mirror is skipped. Re-running a draft build deletes the previous
+  draft for that tag first — GitHub allows several drafts to share a tag name, so without
+  that they stack up. Only a publish is guarded against reusing a version, since only a
+  publish is irreversible.
 - **PR / push** build a preview label only — never tag, never release.
 
 Local builds set the label directly, e.g. `BUILD_VERSION=1.03 ./build_wn_turnip.sh`.
+
+## Release notes
+
+`release_notes.py` builds the body. Two changelogs go in, and neither is derivable from
+the other:
+
+- **Driver changes** — `git log <prev tag>..HEAD` in this repo. Needs the release job to
+  check out with `fetch-depth: 0`, which is why it does.
+- **Mesa changes** — the range between the previous release's mesa commit and this one,
+  via the GitLab compare API (project 176), plus the commits touching `src/freedreno`,
+  `src/util/u_gralloc` and `src/vulkan/runtime` in that range. A Turnip regression is far
+  more often upstream's than ours, so this is what makes one bisectable.
+
+The mesa commit is recorded in the body as `<!-- wn-mesa-commit: <sha> -->` and read back
+on the next release to get an exact range. A release without that marker falls back to the
+previous release's publish date, which is what `v1.15` had to do — `v1.14` predates the
+marker. Every network lookup degrades to a note rather than failing the release.
+
+`build_wn_turnip.sh` clones mesa **once** and builds every variant from that tree. Cloning
+per variant let upstream advance in between, so a release could ship a `-b` and a `-p` from
+different mesa commits and the notes could only name one. The commit and version land in
+`mesa_hash.txt` / `mesa_version.txt`, which CI reads into job outputs and uploads with the
+build logs — the build clones `--depth=1` and never prints the sha, so it is otherwise
+unrecoverable after the fact.
 
 ## Repository / contribution flow
 This is developed on the fork **`maxjivi05/Drivers`** and contributed upstream to the

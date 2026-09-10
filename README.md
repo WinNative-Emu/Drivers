@@ -162,6 +162,7 @@ Adrenotools-aware launchers (e.g. WinNative, Winlator) can import each `.zip` di
 ├── build_wn_turnip.sh        # entrypoint: builds both -b and -p
 ├── build_turnip.sh           # core cross-compile engine (do not call directly)
 ├── verify_patches.sh         # asserts every patch reported applied, per variant
+├── release_notes.py          # driver + Mesa changelogs for a release body
 ├── patches/
 │   ├── add_aimapper_gralloc.py
 │   ├── add_ubwc_swapchain_usage.py

@@ -15,7 +15,7 @@ on:
         required: false
         default: main
       publish:
-        description: "Tag and publish a release. Leave false for a draft run: both variants are built and uploaded as artifacts, nothing is tagged or released."
+        description: "Publish the release. Leave false to create it as a GitHub DRAFT — assets and notes attached, no tag created until you publish it."
         required: false
         type: boolean
         default: false
@@ -36,7 +36,10 @@ jobs:
       build_version: ${{ steps.ver.outputs.build_version }}
       tag_name: ${{ steps.ver.outputs.tag_name }}
       release: ${{ steps.ver.outputs.release }}
+      publish: ${{ steps.ver.outputs.publish }}
       head_sha: ${{ steps.ver.outputs.head_sha }}
+      mesa_commit: ${{ steps.mesa.outputs.commit }}
+      mesa_version: ${{ steps.mesa.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,30 +73,36 @@ jobs:
             pull_request)
               build_ver="${next_base}-PR${{ github.event.pull_request.number }}"
               echo "release=false" >> "$GITHUB_OUTPUT"
+              echo "publish=false" >> "$GITHUB_OUTPUT"
               ;;
             push)
               build_ver="${next_base}"
               echo "release=false" >> "$GITHUB_OUTPUT"
+              echo "publish=false" >> "$GITHUB_OUTPUT"
               ;;
             schedule|workflow_dispatch)
-              # A manual dispatch defaults to a DRAFT run: both variants are built
-              # and uploaded as artifacts under their normal names, but nothing is
-              # tagged or released. The weekly schedule always publishes.
+              # Both paths create the GitHub release. publish=false makes it a
+              # DRAFT: assets and notes are attached and it sits unpublished, so
+              # no git tag exists until someone hits Publish. The weekly schedule
+              # always publishes outright.
               publish="${{ github.event.inputs.publish }}"
               if [ "${{ github.event_name }}" = "schedule" ]; then
                 publish="true"
               fi
               build_ver="${next_base}"
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
               if [ "${publish}" = "true" ]; then
+                # Only a publish is irreversible, so only a publish is guarded.
+                # A draft can be regenerated as often as you like.
                 if git rev-parse "v${next_base}" >/dev/null 2>&1; then
                   echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
                   exit 1
                 fi
-                echo "release=true" >> "$GITHUB_OUTPUT"
-                echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
+                echo "publish=true" >> "$GITHUB_OUTPUT"
               else
-                echo "release=false" >> "$GITHUB_OUTPUT"
-                echo "Draft run: artifacts only, no tag and no release."
+                echo "publish=false" >> "$GITHUB_OUTPUT"
+                echo "Draft release: assets and notes attached, no tag until published."
               fi
               ;;
           esac
@@ -132,6 +141,20 @@ jobs:
       - name: Verify patches landed on both variants
         run: ./verify_patches.sh b p
 
+      # Which mesa a release was built from is the first thing anyone asks when a
+      # driver regresses, and it is not recoverable after the fact — the build
+      # clones --depth=1 and the log never prints the sha.
+      - name: Record the mesa commit that was built
+        id: mesa
+        run: |
+          set -euo pipefail
+          commit=$(tr -d '[:space:]' < mesa_hash.txt)
+          version=$(tr -d '[:space:]' < mesa_version.txt 2>/dev/null || echo unknown)
+          [ -n "$commit" ] || { echo "::error::mesa_hash.txt is empty"; exit 1; }
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Built from mesa ${commit} (${version})"
+
       - name: Verify output zips exist
         run: |
           ls -lh "WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip" \
@@ -161,7 +184,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-logs-${{ steps.ver.outputs.build_version }}
-          path: build_log_*.txt
+          path: |
+            build_log_*.txt
+            mesa_hash.txt
+            mesa_version.txt
           if-no-files-found: warn
           retention-days: 30
 
@@ -172,11 +198,52 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Needed for the driver-side changelog: release_notes.py runs git log
+      # against the previous release tag, so the tags have to be here.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.build.outputs.head_sha }}
+          persist-credentials: false
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: WN-Turnip-${{ needs.build.outputs.build_version }}-*_Axxx
           merge-multiple: true
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.build_version }}
+          TAG: ${{ needs.build.outputs.tag_name }}
+          MESA_COMMIT: ${{ needs.build.outputs.mesa_commit }}
+          MESA_VERSION: ${{ needs.build.outputs.mesa_version }}
+        run: |
+          set -euo pipefail
+          python3 release_notes.py > RELEASE_NOTES.md
+          echo "----- generated notes -----"
+          cat RELEASE_NOTES.md
+
+      # GitHub lets several drafts share one tag name, so re-running a draft
+      # build would otherwise stack up duplicates. Only drafts are touched;
+      # a published release with this tag is left alone and the publish guard
+      # in the build job has already refused that case.
+      - name: Clear any previous draft for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.build.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          ids=$(gh api "repos/${REPO}/releases?per_page=100" \
+                  --jq ".[] | select(.draft==true and .tag_name==\"${TAG}\") | .id")
+          for id in $ids; do
+            echo "Deleting stale draft release $id for ${TAG}"
+            gh api -X DELETE "repos/${REPO}/releases/${id}"
+          done
 
       - name: Create GitHub Release
         # softprops/action-gh-release v2.0.8
@@ -185,17 +252,30 @@ jobs:
           tag_name: ${{ needs.build.outputs.tag_name }}
           name: WN-Turnip ${{ needs.build.outputs.build_version }}
           target_commitish: ${{ needs.build.outputs.head_sha }}
+          body_path: RELEASE_NOTES.md
+          draft: ${{ needs.build.outputs.publish != 'true' }}
           files: |
             WN-Turnip-${{ needs.build.outputs.build_version }}-b_Axxx.zip
             WN-Turnip-${{ needs.build.outputs.build_version }}-p_Axxx.zip
-          generate_release_notes: true
           fail_on_unmatched_files: true
-          make_latest: true
+          make_latest: ${{ needs.build.outputs.publish == 'true' }}
 
-      # Also mirror both variants to the shared WinNative-Components release.
+      - name: Report
+        env:
+          TAG: ${{ needs.build.outputs.tag_name }}
+        run: |
+          if [ "${{ needs.build.outputs.publish }}" = "true" ]; then
+            echo "Published ${TAG}."
+          else
+            echo "Draft ${TAG} created. Review it, then hit Publish to create the tag."
+          fi
+
+      # Mirror to the shared WinNative-Components release. A draft is not a
+      # release anyone should be consuming yet, so this only runs on a publish.
       # Needs a COMPONENTS_TOKEN secret (PAT with contents:write on that repo);
-      # skips cleanly if the secret is absent.
+      # skips cleanly if the secret is absent, which is the case in forks.
       - name: Mirror -b/-p to WinNative-Components
+        if: needs.build.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.COMPONENTS_TOKEN }}
           VER: ${{ needs.build.outputs.build_version }}

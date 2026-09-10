@@ -23,3 +23,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 build_full_*.log
+
+# mesa reference checkout
+mesa_ref/
+mesa_version.txt
