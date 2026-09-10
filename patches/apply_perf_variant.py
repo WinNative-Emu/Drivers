@@ -23,17 +23,37 @@ if BUILD_VARIANT not in {"p", "p1", "p2"}:
 
 
 def replace_once(content: str, old: str, new: str, label: str) -> tuple[str, bool]:
+    """Three-state edit per MAINTENANCE.md. Never returns silently.
+
+    A silent no-op here used to be possible, and it is the worst outcome
+    available: the -p zip would build and ship without PWR_MAX clock forcing,
+    the CI drift check greps for "anchor absent" and would find nothing, and the
+    variant would quietly be a -b with a different name.
+    """
     if old in content:
         print(f"  {KGSL_FILE}: {label}")
         return content.replace(old, new, 1), True
+    if new in content:
+        print(f"  {KGSL_FILE}: {label} - already applied")
+        return content, False
+    print(f"  WARNING: {KGSL_FILE}: anchor absent for {label} "
+          f"- upstream refactored? skipping", file=sys.stderr)
     return content, False
 
 
-def ensure_regex(content: str, pattern: str, repl: str, label: str) -> tuple[str, bool]:
+def ensure_regex(content: str, pattern: str, repl: str, label: str,
+                 marker: str) -> tuple[str, bool]:
+    """As replace_once, but the already-applied test needs an explicit marker
+    because `repl` can carry backreferences."""
     updated, count = re.subn(pattern, repl, content, count=1, flags=re.MULTILINE)
     if count:
         print(f"  {KGSL_FILE}: {label}")
         return updated, True
+    if marker in content:
+        print(f"  {KGSL_FILE}: {label} - already applied")
+        return content, False
+    print(f"  WARNING: {KGSL_FILE}: anchor absent for {label} "
+          f"- upstream refactored? skipping", file=sys.stderr)
     return content, False
 
 
@@ -90,6 +110,11 @@ wnturnip_set_pwr_max_constraint(int fd, uint32_t context_id)
             kgsl = kgsl[:pos] + helper_block + kgsl[pos:]
             kgsl_changed = True
             print(f"  {KGSL_FILE}: inserted PWR_MAX helper")
+        else:
+            print(f"  WARNING: {KGSL_FILE}: anchor absent for the PWR_MAX helper "
+                  f"insertion point - upstream refactored? skipping", file=sys.stderr)
+    else:
+        print(f"  {KGSL_FILE}: PWR_MAX helper - already applied")
 
     if BUILD_VARIANT == "p1" and "wnturnip_should_refresh_pwr_max_constraint(" not in kgsl:
         helper_block = """static bool
@@ -112,6 +137,9 @@ wnturnip_should_refresh_pwr_max_constraint(void)
             kgsl = kgsl[:pos] + helper_block + kgsl[pos:]
             kgsl_changed = True
             print(f"  {KGSL_FILE}: inserted 40 ms refresh gate helper")
+        else:
+            print(f"  WARNING: {KGSL_FILE}: anchor absent for the 40 ms refresh gate "
+                  f"helper insertion point - upstream refactored? skipping", file=sys.stderr)
 
     init_old = """   queue->msm_queue_id = req.drawctxt_id;\n\n   return 0;\n}"""
     init_new = """   queue->msm_queue_id = req.drawctxt_id;\n\n   /* WN-Turnip: Set PWR_MAX constraint to request maximum GPU clocks */\n   {\n      int pwr_ret = wnturnip_set_pwr_max_constraint(dev->physical_device->local_fd,\n                                               req.drawctxt_id);\n      if (pwr_ret)\n         mesa_logw(\"WN-Turnip: Failed to set initial PWR_MAX constraint: %s\", strerror(errno));\n   }\n\n   return 0;\n}"""
@@ -123,6 +151,8 @@ wnturnip_should_refresh_pwr_max_constraint(void)
             "inserted initial PWR_MAX constraint setup",
         )
         kgsl_changed |= changed
+    else:
+        print(f"  {KGSL_FILE}: initial PWR_MAX constraint setup - already applied")
 
     old_flags = ".flags = KGSL_CMDBATCH_SUBMIT_IB_LIST,"
     new_flags = ".flags = KGSL_CMDBATCH_SUBMIT_IB_LIST | KGSL_CMDBATCH_PWR_CONSTRAINT,"
@@ -134,6 +164,8 @@ wnturnip_should_refresh_pwr_max_constraint(void)
             "added KGSL_CMDBATCH_PWR_CONSTRAINT to submission flags",
         )
         kgsl_changed |= changed
+    else:
+        print(f"  {KGSL_FILE}: KGSL_CMDBATCH_PWR_CONSTRAINT - already applied")
 
     refresh_anchor = "      timestamp = req.timestamp;\n   } else {"
     if BUILD_VARIANT == "p" and "pwr_refresh_counter" not in kgsl:
@@ -146,6 +178,8 @@ wnturnip_should_refresh_pwr_max_constraint(void)
         )
         kgsl_changed |= changed
 
+    elif BUILD_VARIANT == "p":
+        print(f"  {KGSL_FILE}: periodic PWR_MAX refresh - already applied")
     if BUILD_VARIANT == "p1" and "wnturnip_should_refresh_pwr_max_constraint" in kgsl and "PWR_MAX refresh failed after %" not in kgsl:
         refresh_block = """      /* WN-Turnip: Re-assert PWR_MAX at most every 40 ms, piggybacked on submit */\n      if (wnturnip_should_refresh_pwr_max_constraint()) {\n         int pwr_ret = wnturnip_set_pwr_max_constraint(\n               queue->device->physical_device->local_fd,\n               queue->msm_queue_id);\n         if (pwr_ret)\n            mesa_logw(\"WN-Turnip: 40 ms PWR_MAX refresh failed: %s\", strerror(errno));\n      }\n\n      timestamp = req.timestamp;\n   } else {"""
         kgsl, changed = replace_once(
@@ -239,6 +273,9 @@ if old_bw in autotune:
     print(f"  {AUTOTUNE_FILE}: reduced bandwidth multiplier 11 -> 10")
 elif "* 10 + total" in autotune:
     print(f"  {AUTOTUNE_FILE}: bandwidth multiplier already reduced")
+else:
+    print(f"  WARNING: {AUTOTUNE_FILE}: anchor absent for the bandwidth multiplier "
+          f"- upstream refactored? skipping", file=sys.stderr)
 
 if at_changed:
     with open(AUTOTUNE_FILE, "w") as f:

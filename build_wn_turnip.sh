@@ -5,6 +5,8 @@ set -o pipefail
 # performance (p) variants from latest upstream mesa main with the WinNative
 # A8xx workaround set applied.
 #
+# Set BUILD_VARIANTS to override which are built, e.g. BUILD_VARIANTS="p".
+#
 # Output ZIPs:
 #   ../WN-Turnip-${BUILD_VERSION}-b_Axxx.zip
 #   ../WN-Turnip-${BUILD_VERSION}-p_Axxx.zip
@@ -15,9 +17,9 @@ cd "$SCRIPT_DIR"
 
 export BUILD_VERSION="${BUILD_VERSION:-1.0}"
 export EXTRA_PATCH=""
-export EXTRA_SCRIPT="patches/fix_gralloc_flushall.py:patches/fix_a8xx_dev_info.py:patches/apply_a8xx_gpus.py:patches/apply_a7xx_gen1_quirks.py:patches/apply_a7xx_gen2_ubwc_hint.py"
+export EXTRA_SCRIPT="patches/fix_gralloc_flushall.py:patches/fix_a8xx_dev_info.py:patches/apply_a8xx_gpus.py:patches/apply_a7xx_gen1_quirks.py:patches/apply_a7xx_gen2_ubwc_hint.py:patches/add_aimapper_gralloc.py:patches/add_ubwc_swapchain_usage.py"
 
-variants=(b p)
+read -ra variants <<< "${BUILD_VARIANTS:-b p}"
 
 for variant in "${variants[@]}"; do
 	echo ""

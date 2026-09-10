@@ -8,6 +8,8 @@ Changes:
 2. tu_autotune.cc: Reduce GMEM bandwidth multiplier from 11 to 10
 """
 
+import sys
+
 AUTOTUNE_FILE = "src/freedreno/vulkan/tu_autotune.cc"
 
 with open(AUTOTUNE_FILE, "r") as f:
@@ -36,6 +38,9 @@ if OLD_BW in content:
     print(f"  {AUTOTUNE_FILE}: reduced bandwidth multiplier 11 -> 10")
 elif "* 10 + total" in content:
     print(f"  {AUTOTUNE_FILE}: bandwidth multiplier already reduced")
+else:
+    print(f"  WARNING: {AUTOTUNE_FILE}: anchor absent for the bandwidth multiplier "
+          f"- upstream refactored? skipping", file=sys.stderr)
 
 if changes:
     with open(AUTOTUNE_FILE, "w") as f:
