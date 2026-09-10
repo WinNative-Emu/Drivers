@@ -66,10 +66,15 @@ forcing and the CI drift grep would find nothing to complain about.
 
 ## Re-verifying on a mesa bump
 1. `BUILD_VERSION=<ver> ./build_wn_turnip.sh` (clones latest main, applies patches).
-2. Read `build_log_{b,p}.txt`: every script should print an "applied" or an explicit
+2. `./verify_patches.sh` — asserts every patch reported itself applied, per variant,
+   and fails if the RedMagic display fixes or the `-p` PWR_MAX edits are missing from a
+   log. CI runs the same script, so a green CI run means both archives really carry
+   both fixes. It tolerates exactly one known-benign "anchor absent" line, the autotune
+   drawcall gate upstream restructured away.
+3. Read `build_log_{b,p}.txt`: every script should print an "applied" or an explicit
    "already/absent/skipping" line. A bare/missing line or a `WARNING:` means an anchor
    drifted — re-diff that script against current upstream before shipping.
-3. Update the table above with the new mesa hash.
+4. Update the table above with the new mesa hash.
 
 ## Versioning
 
@@ -83,7 +88,10 @@ The CI (`.github/workflows/build.yml`):
   2026-07-08) builds `-b`/`-p` from latest mesa main and **tags + releases** the
   bumped version. Runs every week regardless of whether this repo changed, since
   mesa main advances on its own.
-- **`workflow_dispatch`** does the same on demand.
+- **`workflow_dispatch`** takes a `publish` input, default **false**. Left false it is a
+  **draft run**: both variants are built and uploaded as artifacts under their normal
+  `WN-Turnip-<ver>-{b,p}_Axxx.zip` names, and nothing is tagged or released. Set it true
+  to cut an actual release. Screening builds should always leave it false.
 - **PR / push** build a preview label only — never tag, never release.
 
 Local builds set the label directly, e.g. `BUILD_VERSION=1.03 ./build_wn_turnip.sh`.

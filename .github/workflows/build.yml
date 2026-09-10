@@ -14,6 +14,11 @@ on:
         description: "Commit SHA or branch to build & release"
         required: false
         default: main
+      publish:
+        description: "Tag and publish a release. Leave false for a draft run: both variants are built and uploaded as artifacts, nothing is tagged or released."
+        required: false
+        type: boolean
+        default: false
 
 # schedule + workflow_dispatch release (tag + GitHub release, version bumped);
 # PR and push only build a preview. Release events serialize on build-release.
@@ -71,13 +76,25 @@ jobs:
               echo "release=false" >> "$GITHUB_OUTPUT"
               ;;
             schedule|workflow_dispatch)
-              if git rev-parse "v${next_base}" >/dev/null 2>&1; then
-                echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
-                exit 1
+              # A manual dispatch defaults to a DRAFT run: both variants are built
+              # and uploaded as artifacts under their normal names, but nothing is
+              # tagged or released. The weekly schedule always publishes.
+              publish="${{ github.event.inputs.publish }}"
+              if [ "${{ github.event_name }}" = "schedule" ]; then
+                publish="true"
               fi
               build_ver="${next_base}"
-              echo "release=true" >> "$GITHUB_OUTPUT"
-              echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
+              if [ "${publish}" = "true" ]; then
+                if git rev-parse "v${next_base}" >/dev/null 2>&1; then
+                  echo "::error::Tag v${next_base} already exists; refusing to release the same version twice."
+                  exit 1
+                fi
+                echo "release=true" >> "$GITHUB_OUTPUT"
+                echo "tag_name=v${next_base}" >> "$GITHUB_OUTPUT"
+              else
+                echo "release=false" >> "$GITHUB_OUTPUT"
+                echo "Draft run: artifacts only, no tag and no release."
+              fi
               ;;
           esac
           echo "build_version=${build_ver}" >> "$GITHUB_OUTPUT"
@@ -108,6 +125,13 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: ./build_wn_turnip.sh
 
+      # A patch script that finds no anchor logs and moves on, so the zip still
+      # builds and installs while silently missing the fix. Only the build log
+      # can catch that, and the RedMagic display fixes ride EXTRA_SCRIPT onto
+      # both variants, so both logs are checked.
+      - name: Verify patches landed on both variants
+        run: ./verify_patches.sh b p
+
       - name: Verify output zips exist
         run: |
           ls -lh "WN-Turnip-${{ steps.ver.outputs.build_version }}-b_Axxx.zip" \
@@ -129,6 +153,16 @@ jobs:
           name: WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx
           path: WN-Turnip-${{ steps.ver.outputs.build_version }}-p_Axxx.zip
           if-no-files-found: error
+          retention-days: 30
+
+      # The per-variant logs are how a drifted anchor is diagnosed after the fact.
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ steps.ver.outputs.build_version }}
+          path: build_log_*.txt
+          if-no-files-found: warn
           retention-days: 30
 
   release:
