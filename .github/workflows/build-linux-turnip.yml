@@ -1,6 +1,14 @@
 name: Build WN-Linux-Turnip Drivers
 
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        default: feature/linux-drivers
+      publish:
+        type: boolean
+        default: false
   schedule:
     - cron: '0 12 * * 3'
   push:
@@ -30,26 +38,32 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       commit: ${{ steps.mesa.outputs.commit }}
       mesa_version: ${{ steps.mesa.outputs.version }}
+      recipe_commit: ${{ steps.version.outputs.recipe_commit }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.source_ref || github.sha }}
           persist-credentials: false
       - name: Version
         id: version
-        run: echo "version=$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(date -u +%Y%m%d).${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "recipe_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential git python3-pip ninja-build pkg-config \
             flex bison zip libdrm-dev libwayland-dev wayland-protocols libx11-xcb-dev libxcb-dri3-dev \
             libxcb-present-dev libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev \
-            libxcb-keysyms1-dev libzstd-dev zlib1g-dev libexpat1-dev glslang-tools
+            libxcb-keysyms1-dev libxcb-shm0-dev libzstd-dev zlib1g-dev libexpat1-dev glslang-tools
           python3 -m pip install --break-system-packages 'meson>=1.5' mako pyyaml packaging
       - name: Build balanced and performance
         env:
           BUILD_VERSION: ${{ steps.version.outputs.version }}
           BUILD_JOBS: '4'
-        run: ./build_linux_turnip.sh 2>&1 | tee linux-build.log
+        run: |
+          set -euo pipefail
+          ./build_linux_turnip.sh 2>&1 | tee linux-build.log
       - name: Mesa provenance
         id: mesa
         run: |
@@ -94,6 +108,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
           MESA_COMMIT: ${{ needs.build.outputs.commit }}
           MESA_VERSION: ${{ needs.build.outputs.mesa_version }}
+          RECIPE_COMMIT: ${{ needs.build.outputs.recipe_commit }}
           PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
         run: |
           set -euo pipefail
@@ -101,7 +116,7 @@ jobs:
           Linux ARM64/glibc Turnip for WinNative GameScope/Wayland. Install from Settings → Drivers → Linux.
 
           Mesa ${MESA_VERSION}: https://gitlab.freedesktop.org/mesa/mesa/-/commit/${MESA_COMMIT}
-          Recipe: https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}
+          Recipe: https://github.com/${GITHUB_REPOSITORY}/commit/${RECIPE_COMMIT}
 
           Both variants use the same Mesa commit. Balanced (-b) adjusts the GMEM autotuner; performance (-p) adds KGSL PWR_MAX requests, refreshed every 1000 submissions.
 
@@ -110,4 +125,4 @@ jobs:
           options=(--draft)
           if [[ "$PUBLISH" == true ]]; then options=(--latest=false); fi
           gh release create "linux-v${VERSION}" WN-Linux-Turnip-*.zip --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "WN-Linux-Turnip ${VERSION}" --notes-file notes.md "${options[@]}"
+            --target "$RECIPE_COMMIT" --title "WN-Linux-Turnip ${VERSION}" --notes-file notes.md "${options[@]}"

@@ -1,0 +1,21 @@
+name: Weekly Linux Turnip
+
+on:
+  schedule:
+    - cron: '0 12 * * 3'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the Linux driver release
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    uses: WinNative-Emu/Drivers/.github/workflows/build-linux-turnip.yml@feature/linux-drivers
+    with:
+      source_ref: feature/linux-drivers
+      publish: ${{ github.event_name == 'schedule' || inputs.publish }}
