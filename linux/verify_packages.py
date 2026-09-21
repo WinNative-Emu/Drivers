@@ -14,6 +14,8 @@ for value in sys.argv[1:]:
     with zipfile.ZipFile(archive) as package:
         meta = json.loads(package.read('meta.json'))
         library = package.read(meta['libraryName'])
+    if meta['name'] != f'WN Linux Turnip {meta["driverVersion"]}' or not meta['driverVersion'].endswith('-' + meta['variant']):
+        raise SystemExit('Incorrect driver label')
     if meta['platform'] != 'linux' or meta['architecture'] != 'aarch64' or meta['libc'] != 'glibc':
         raise SystemExit('Incorrect package platform')
     digest = hashlib.sha256(library).hexdigest()

@@ -1,4 +1,4 @@
-name: Build WN-Linux-Turnip Drivers
+name: Build WN Linux Turnip Drivers
 
 on:
   workflow_call:
@@ -46,8 +46,13 @@ jobs:
           persist-credentials: false
       - name: Version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "version=$(date -u +%Y%m%d).${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          python3 -m unittest discover -s linux -p 'test_*.py'
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json
+          echo "version=$(python3 linux/release_version.py < releases.json)" >> "$GITHUB_OUTPUT"
           echo "recipe_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Dependencies
         run: |
@@ -124,5 +129,14 @@ jobs:
           EOF
           options=(--draft)
           if [[ "$PUBLISH" == true ]]; then options=(--latest=false); fi
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json
+          existing=$(jq -r --arg tag "linux-v${VERSION}" '[.[][] | select(.tag_name == $tag)] | if length == 0 then "absent" elif .[0].draft then "draft" else "published" end' releases.json)
+          if [[ "$existing" == published ]]; then
+            echo "Refusing to replace published linux-v${VERSION}" >&2
+            exit 1
+          fi
+          if [[ "$existing" == draft ]]; then
+            gh release delete "linux-v${VERSION}" --repo "$GITHUB_REPOSITORY" --yes
+          fi
           gh release create "linux-v${VERSION}" WN-Linux-Turnip-*.zip --repo "$GITHUB_REPOSITORY" \
-            --target "$RECIPE_COMMIT" --title "WN-Linux-Turnip ${VERSION}" --notes-file notes.md "${options[@]}"
+            --target "$RECIPE_COMMIT" --title "WN Linux Turnip ${VERSION}" --notes-file notes.md "${options[@]}"

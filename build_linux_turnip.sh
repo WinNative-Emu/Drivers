@@ -2,7 +2,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here"
-version=${BUILD_VERSION:-$(date -u +%Y%m%d%H%M)}
+version=${BUILD_VERSION:-0.1.0}
 [[ "$version" =~ ^[a-zA-Z0-9._-]+$ ]]
 work="$here/linux_work"
 mkdir -p "$work"

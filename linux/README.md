@@ -20,6 +20,8 @@ Balanced (`-b`) uses the WN GPU fixes and GMEM bandwidth multiplier 10. Performa
 
 `patch_mesa.py` ports the two WinNative `tools/linuxfs/turnip` fixes: KGSL dma-buf feedback device reporting, and disabling unsupported calibrated timestamps/present timing. It fails when its source anchors change. `verify_patches.py` also rejects warnings/missing patch anchors, aside from the retired draw-call threshold. Update and re-review patches when upstream changes; do not suppress failures to produce a release.
 
+Displayed names start at **WN Linux Turnip 0.1.0-b** and **WN Linux Turnip 0.1.0-p**, packaged as `WN-Linux-Turnip-0.1.0-b_Axxx.zip` and `WN-Linux-Turnip-0.1.0-p_Axxx.zip`. Linux has its own semantic version series. CI increments the patch component after the highest published stable Linux release; previews and drafts reuse the next unpublished version. A repeated draft build replaces that draft, while published releases cannot be replaced. Local builds default to `0.1.0`; set `BUILD_VERSION` explicitly for another version.
+
 ## ZIP contract
 
 Each `WN-Linux-Turnip-<version>-{b,p}_Axxx.zip` contains a flat `meta.json` and `libvulkan_freedreno.so`. Metadata identifies `platform=linux`, `architecture=aarch64`, `libc=glibc`, `variant`, Mesa repository/SHA/version, build-recipe commit and SHA-256 of the library. The app creates its own ICD manifest after installing, so no device-specific absolute paths are distributed.
