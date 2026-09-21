@@ -1,0 +1,113 @@
+name: Build WN-Linux-Turnip Drivers
+
+on:
+  schedule:
+    - cron: '0 12 * * 3'
+  push:
+    branches: [feature/linux-drivers]
+    paths: ['linux/**', 'patches/**', 'build_linux_turnip.sh', '.github/workflows/build-linux-turnip.yml']
+  pull_request:
+    paths: ['linux/**', 'patches/**', 'build_linux_turnip.sh', '.github/workflows/build-linux-turnip.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the Linux driver release
+        type: boolean
+        default: false
+
+concurrency:
+  group: linux-turnip-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'release' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.mesa.outputs.commit }}
+      mesa_version: ${{ steps.mesa.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Version
+        id: version
+        run: echo "version=$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential git python3-pip ninja-build pkg-config \
+            flex bison zip libdrm-dev libwayland-dev wayland-protocols libx11-xcb-dev libxcb-dri3-dev \
+            libxcb-present-dev libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev \
+            libxcb-keysyms1-dev libzstd-dev zlib1g-dev libexpat1-dev glslang-tools
+          python3 -m pip install --break-system-packages 'meson>=1.5' mako pyyaml packaging
+      - name: Build balanced and performance
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_JOBS: '4'
+        run: ./build_linux_turnip.sh 2>&1 | tee linux-build.log
+      - name: Mesa provenance
+        id: mesa
+        run: |
+          echo "commit=$(cat linux_work/mesa_commit.txt)" >> "$GITHUB_OUTPUT"
+          echo "version=$(cat linux_work/mesa_version.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WN-Linux-Turnip-${{ steps.version.outputs.version }}-b_Axxx
+          path: WN-Linux-Turnip-${{ steps.version.outputs.version }}-b_Axxx.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WN-Linux-Turnip-${{ steps.version.outputs.version }}-p_Axxx
+          path: WN-Linux-Turnip-${{ steps.version.outputs.version }}-p_Axxx.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-build-provenance-${{ steps.version.outputs.version }}
+          path: |
+            linux-build.log
+            linux_work/patch-*.log
+            linux_work/mesa*.txt
+            linux_work/mesa-*.patch
+            linux_work/package-*/meta.json
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: WN-Linux-Turnip-${{ needs.build.outputs.version }}-*_Axxx
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          MESA_COMMIT: ${{ needs.build.outputs.commit }}
+          MESA_VERSION: ${{ needs.build.outputs.mesa_version }}
+          PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          Linux ARM64/glibc Turnip for WinNative GameScope/Wayland. Install from Settings → Drivers → Linux.
+
+          Mesa ${MESA_VERSION}: https://gitlab.freedesktop.org/mesa/mesa/-/commit/${MESA_COMMIT}
+          Recipe: https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}
+
+          Both variants use the same Mesa commit. Balanced (-b) adjusts the GMEM autotuner; performance (-p) adds KGSL PWR_MAX requests, refreshed every 1000 submissions.
+
+          These packages use glibc and Wayland/X11 WSI. Android Adrenotools drivers remain separate.
+          EOF
+          options=(--draft)
+          if [[ "$PUBLISH" == true ]]; then options=(--latest=false); fi
+          gh release create "linux-v${VERSION}" WN-Linux-Turnip-*.zip --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "WN-Linux-Turnip ${VERSION}" --notes-file notes.md "${options[@]}"
