@@ -32,6 +32,8 @@ for value in sys.argv[1:]:
         raise SystemExit('Incorrect ELF ABI')
     if b'vkCreateWaylandSurfaceKHR' not in library or b'vkCreateXcbSurfaceKHR' not in library:
         raise SystemExit('Missing Linux WSI')
+    if b'drirc.d' in library:
+        raise SystemExit('Driver defaults read from disk instead of built in')
     if (b'Failed to set initial PWR_MAX constraint' in library) != (meta['variant'] == 'p'):
         raise SystemExit('Incorrect power variant')
     print(f'{archive.name}: ARM64 glibc, Wayland/X11, {meta["variant"]}, Mesa {meta["mesaCommit"]}')

@@ -68,7 +68,8 @@ EOF
   fi
   meson setup "$work/build-$variant" "$src" "${options[@]}" --buildtype release \
     -Dvulkan-drivers=freedreno -Dfreedreno-kmds=msm,kgsl -Dgallium-drivers= -Dplatforms=wayland,x11 \
-    -Dopengl=false -Dgbm=disabled -Dglx=disabled -Degl=disabled -Dllvm=disabled -Dvulkan-layers= -Dtools= -Dvideo-codecs=
+    -Dopengl=false -Dgbm=disabled -Dglx=disabled -Degl=disabled -Dllvm=disabled -Dvulkan-layers= -Dtools= -Dvideo-codecs= \
+    -Dxmlconfig=disabled
   ninja -j "${BUILD_JOBS:-4}" -C "$work/build-$variant" src/freedreno/vulkan/libvulkan_freedreno.so
   package="$work/package-$variant"
   mkdir -p "$package"
