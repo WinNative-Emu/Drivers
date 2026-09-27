@@ -34,6 +34,10 @@ for variant in "${variants[@]}"; do
       BUILD_VARIANT=p python3 "$here/patches/apply_perf_variant.py"
     fi
     python3 "$here/linux/patch_mesa.py"
+    for patch in "$here"/linux/patches/*.patch; do
+      git apply "$patch"
+      echo "Applied $(basename "$patch")"
+    done
   ) 2>&1 | tee "$work/patch-$variant.log"
   python3 "$here/linux/verify_patches.py" "$src" "$variant" "$work/patch-$variant.log"
   git -C "$src" diff --binary > "$work/mesa-$variant.patch"

@@ -12,6 +12,11 @@ for line in log.splitlines():
 root = Path(source)
 kgsl = (root / 'src/freedreno/vulkan/tu_knl_kgsl.cc').read_text()
 autotune = (root / 'src/freedreno/vulkan/tu_autotune.cc').read_text()
+device = (root / 'src/freedreno/vulkan/tu_device.cc').read_text()
+if not (root / 'src/freedreno/vulkan/tu_mesh.cc').exists() or '.EXT_mesh_shader = tu_has_mesh_shader(device)' not in device:
+    raise SystemExit('Missing mesh shader emulation')
+if 'ir3_nir_lower_half_subgroups' not in (root / 'src/freedreno/ir3/ir3_nir.c').read_text():
+    raise SystemExit('Missing half-wave subgroups')
 checks = ['has_local = device->has_master = true']
 if variant == 'p':
     checks += ['wnturnip_set_pwr_max_constraint(', 'count % 1000 == 0', 'KGSL_CONTEXT_PWR_CONSTRAINT', 'KGSL_CMDBATCH_PWR_CONSTRAINT']

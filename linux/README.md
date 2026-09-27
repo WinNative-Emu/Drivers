@@ -20,6 +20,13 @@ Balanced (`-b`) uses the WN GPU fixes and GMEM bandwidth multiplier 10. Performa
 
 `patch_mesa.py` ports the two WinNative `tools/linuxfs/turnip` fixes: KGSL dma-buf feedback device reporting, and disabling unsupported calibrated timestamps/present timing. It fails when its source anchors change. `verify_patches.py` also rejects warnings/missing patch anchors, aside from the retired draw-call threshold. Update and re-review patches when upstream changes; do not suppress failures to produce a release.
 
+`linux/patches/` holds Mesa commits applied with `git apply` after the scripts, in name order. They are needed by DX12 Ultimate games such as FINAL FANTASY VII REBIRTH:
+
+- `0001` implements `VK_EXT_mesh_shader` by running task and mesh shaders as compute into a device ring that a generated vertex shader draws. Render passes with mesh draws use sysmem rendering.
+- `0002` supports a required subgroup size of 32 on A8XX's 64-wide waves, so vkd3d-proton accepts `WaveSize(32)` shaders. Each half of a wave acts as one subgroup.
+
+A patch that no longer applies fails the build. Rebase it in a Mesa checkout, regenerate it with `git format-patch`, and re-run the `dEQP-VK.mesh_shader.ext.*` and `dEQP-VK.subgroups.*` groups on an Adreno device.
+
 Displayed names start at **WN Linux Turnip 0.1.0-b** and **WN Linux Turnip 0.1.0-p**, packaged as `WN-Linux-Turnip-0.1.0-b_Axxx.zip` and `WN-Linux-Turnip-0.1.0-p_Axxx.zip`. Linux has its own semantic version series. CI increments the patch component after the highest published stable Linux release; previews and drafts reuse the next unpublished version. A repeated draft build replaces that draft, while published releases cannot be replaced. Local builds default to `0.1.0`; set `BUILD_VERSION` explicitly for another version.
 
 ## ZIP contract
