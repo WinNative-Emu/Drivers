@@ -1,18 +1,10 @@
 name: Build WN Linux Turnip Drivers
 
 on:
-  workflow_call:
-    inputs:
-      source_ref:
-        type: string
-        default: feature/linux-drivers
-      publish:
-        type: boolean
-        default: false
   schedule:
     - cron: '0 12 * * 3'
   push:
-    branches: [feature/linux-drivers]
+    branches: [main]
     paths: ['linux/**', 'patches/**', 'build_linux_turnip.sh', '.github/workflows/build-linux-turnip.yml']
   pull_request:
     paths: ['linux/**', 'patches/**', 'build_linux_turnip.sh', '.github/workflows/build-linux-turnip.yml']
@@ -24,7 +16,7 @@ on:
         default: false
 
 concurrency:
-  group: linux-turnip-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'release' }}
+  group: linux-turnip-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && format('push-{0}', github.run_id) || 'release' }}
   cancel-in-progress: false
 
 permissions:
@@ -42,7 +34,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.sha }}
           persist-credentials: false
       - name: Version
         id: version

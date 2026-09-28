@@ -17,7 +17,7 @@ alias.
  2 files changed, 99 insertions(+)
 
 diff --git a/src/freedreno/vulkan/tu_knl.h b/src/freedreno/vulkan/tu_knl.h
-index 27f035f..6e72ffa 100644
+index 27f035ff..6e72ffab 100644
 --- a/src/freedreno/vulkan/tu_knl.h
 +++ b/src/freedreno/vulkan/tu_knl.h
 @@ -57,6 +57,9 @@ struct tu_bo {
@@ -31,7 +31,7 @@ index 27f035f..6e72ffa 100644
  
     bool implicit_sync : 1;
 diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
-index a999807..d76a9f9 100644
+index a9998073..d76a9f9d 100644
 --- a/src/freedreno/vulkan/tu_knl_kgsl.cc
 +++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
 @@ -295,6 +295,95 @@ kgsl_align_flag(uint64_t align)
