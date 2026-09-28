@@ -16,10 +16,10 @@ with zero, clamp to finite values and turn the zero vector into +Z.
  3 files changed, 64 insertions(+)
 
 diff --git a/src/freedreno/common/freedreno_dev_info.h b/src/freedreno/common/freedreno_dev_info.h
-index 34fb9e6..c720898 100644
+index d0be37be..336142f6 100644
 --- a/src/freedreno/common/freedreno_dev_info.h
 +++ b/src/freedreno/common/freedreno_dev_info.h
-@@ -516,6 +516,11 @@ struct fd_dev_info {
+@@ -483,6 +483,11 @@ struct fd_dev_info {
  
        /* On a750+ SUBPASS_FENCE also implicitly does CCU_RESOLVE_CLEAN */
        bool subpass_fence_cleans_resolve;
@@ -29,25 +29,25 @@ index 34fb9e6..c720898 100644
 +       */
 +      bool cube_coord_hang_quirk;
     } props;
- };
  
+ #define FD_QUIRK(info, name) (info)->quirks.name
 diff --git a/src/freedreno/common/freedreno_devices.py b/src/freedreno/common/freedreno_devices.py
-index 3033957..9fcc077 100644
+index 8f4f4328..2fa865de 100644
 --- a/src/freedreno/common/freedreno_devices.py
 +++ b/src/freedreno/common/freedreno_devices.py
-@@ -1313,6 +1313,7 @@ a8xx_base = GPUProps(
+@@ -1462,6 +1462,7 @@ a8xx_base = GPUProps(
+         round_robin_errata = False,
          max_texel_buffer_range_elements = (1 << 29) - 1,
          max_storage_buffer_range_bytes = (1 << 31) - 1,
-         alias_mova_quirk = False,
 +        cube_coord_hang_quirk = True,
-     )
  
- # For a8xx, the chicken bit and most other non-ctx reg
+         QCTDD10204462 = False,
+         QCTDD11147232 = False,
 diff --git a/src/freedreno/ir3/ir3_nir.c b/src/freedreno/ir3/ir3_nir.c
-index 0edc5ea..1c50220 100644
+index df8e07b1..1937a9a1 100644
 --- a/src/freedreno/ir3/ir3_nir.c
 +++ b/src/freedreno/ir3/ir3_nir.c
-@@ -717,6 +717,61 @@ ir3_nir_min_lod_workaround(nir_shader *shader)
+@@ -721,6 +721,61 @@ ir3_nir_min_lod_workaround(nir_shader *shader)
        nir_metadata_control_flow, NULL);
  }
  
@@ -109,7 +109,7 @@ index 0edc5ea..1c50220 100644
  void
  ir3_finalize_nir(struct ir3_compiler *compiler,
                   const struct ir3_shader_nir_options *options,
-@@ -787,6 +842,9 @@ ir3_finalize_nir(struct ir3_compiler *compiler,
+@@ -791,6 +846,9 @@ ir3_finalize_nir(struct ir3_compiler *compiler,
     NIR_PASS(_, s, ir3_nir_lower_sparse_residency);
     NIR_PASS(_, s, ir3_nir_min_lod_workaround);
  
