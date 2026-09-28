@@ -198,3 +198,7 @@ implemented and device-confirmed in [`Leb-Sun/Drivers`](https://github.com/Leb-S
 ## License
 
 MIT — see `LICENSE`.
+
+## Linux GameScope/Wayland drivers
+
+The `feature/linux-drivers` branch adds glibc ARM64 Turnip packages alongside the existing Android builds. See [linux/README.md](linux/README.md) for the build, package format, validation and scheduling requirements. Android build scripts and releases keep their existing behavior.
