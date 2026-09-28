@@ -15,10 +15,8 @@ variants=("$@")
 
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
 	err() { echo "::error::$*"; }
-	warn() { echo "::warning::$*"; }
 else
 	err() { echo "ERROR: $*" >&2; }
-	warn() { echo "WARNING: $*" >&2; }
 fi
 
 # Reported by every variant. The RedMagic display fixes ride EXTRA_SCRIPT, so a
@@ -76,12 +74,19 @@ for v in "${variants[@]}"; do
 		done
 	fi
 
-	# Anchor drift, excluding the autotune drawcall gate upstream restructured
-	# away on purpose (see MAINTENANCE.md).
-	drift=$(grep -E "anchor absent" "$log" | grep -v "drawcall anchor absent" || true)
+	# Scripts print WARNING/FATAL when an anchor misses; a skip upstream made
+	# on purpose (the autotune drawcall gate, see MAINTENANCE.md) has neither.
+	# Only the patch stage counts: the Mesa build prints its own warnings.
+	stage=$(sed -n '/==== Building Mesa on /,/Generating build files\.\.\./p' "$log")
+	if [ -z "$stage" ]; then
+		err "variant ${v}: patch stage not found in $log"
+		missing=1
+	fi
+	drift=$(printf '%s\n' "$stage" | grep -E "(WARNING|FATAL):" || true)
 	if [ -n "$drift" ]; then
-		warn "variant ${v} has a drifted anchor:"
+		err "variant ${v}: a patch script missed its anchor:"
 		printf '%s\n' "$drift"
+		missing=1
 	fi
 
 	if [ "$missing" -eq 0 ]; then
