@@ -10,6 +10,7 @@ unaffected because they do not select a7xx_gen1.
 
 Idempotent.
 """
+import re
 import sys
 
 DEVICES_PY = "src/freedreno/common/freedreno_devices.py"
@@ -17,40 +18,35 @@ DEVICES_PY = "src/freedreno/common/freedreno_devices.py"
 with open(DEVICES_PY, "r") as f:
     content = f.read()
 
-OLD = (
-    "a7xx_gen1 = GPUProps(\n"
-    "        supports_uav_ubwc = True,\n"
-    "        fs_must_have_non_zero_constlen_quirk = True,\n"
-    "        enable_tp_ubwc_flag_hint = True,\n"
-    "        reading_shading_rate_requires_smask_quirk = True,\n"
-    "        cs_lock_unlock_quirk = True,\n"
-    "    )"
-)
-NEW = (
-    "a7xx_gen1 = GPUProps(\n"
-    "        supports_uav_ubwc = True,\n"
-    "        fs_must_have_non_zero_constlen_quirk = True,\n"
-    "        enable_tp_ubwc_flag_hint = True,\n"
-    "        reading_shading_rate_requires_smask_quirk = True,\n"
-    "        cs_lock_unlock_quirk = True,\n"
-    "        has_early_preamble = False,\n"
-    "        has_scalar_predicates = False,\n"
-    "    )"
-)
+KEYS = ("has_early_preamble", "has_scalar_predicates")
 
-if NEW in content:
-    print(f"  {DEVICES_PY}: a7xx_gen1 quirks already applied")
-elif OLD in content:
-    content = content.replace(OLD, NEW, 1)
-    try:
-        compile(content, DEVICES_PY, "exec")
-    except SyntaxError as e:
-        print(f"  FATAL: syntax error after patching at line {e.lineno}: {e.msg}", file=sys.stderr)
-        sys.exit(1)
-    with open(DEVICES_PY, "w") as f:
-        f.write(content)
-    print(f"  {DEVICES_PY}: appended has_early_preamble=False, has_scalar_predicates=False to a7xx_gen1")
-else:
+# Anchor on the block itself: upstream keeps renaming the quirks inside it. The
+# body ends at the first unindented line, so it cannot run into the next block.
+match = re.search(r"^a7xx_gen1 = GPUProps\(\n((?:[ \t]+.*\n|\n)*?)^[ \t]*\)", content, re.M)
+
+if not match:
     print(f"  WARNING: a7xx_gen1 anchor not matched, skipping", file=sys.stderr)
+else:
+    body = match.group(1)
+    new_body = body
+    for key in KEYS:
+        entry = re.compile(rf"^([ \t]*{key}[ \t]*=[ \t]*)\w+", re.M)
+        if entry.search(new_body):
+            new_body = entry.sub(r"\g<1>False", new_body, count=1)
+        else:
+            new_body += f"        {key} = False,\n"
+
+    if new_body == body:
+        print(f"  {DEVICES_PY}: a7xx_gen1 quirks already applied")
+    else:
+        content = content[:match.start(1)] + new_body + content[match.end(1):]
+        try:
+            compile(content, DEVICES_PY, "exec")
+        except SyntaxError as e:
+            print(f"  FATAL: syntax error after patching at line {e.lineno}: {e.msg}", file=sys.stderr)
+            sys.exit(1)
+        with open(DEVICES_PY, "w") as f:
+            f.write(content)
+        print(f"  {DEVICES_PY}: set has_early_preamble=False, has_scalar_predicates=False in a7xx_gen1")
 
 print("apply_a7xx_gen1_quirks.py: done")
