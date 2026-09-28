@@ -201,4 +201,4 @@ MIT — see `LICENSE`.
 
 ## Linux GameScope/Wayland drivers
 
-The `feature/linux-drivers` branch adds glibc ARM64 Turnip packages alongside the existing Android builds. See [linux/README.md](linux/README.md) for the build, package format, validation and scheduling requirements. Android build scripts and releases keep their existing behavior.
+`build-linux-turnip.yml` builds glibc ARM64 Turnip packages alongside the existing Android builds. See [linux/README.md](linux/README.md) for the build, package format, validation and release workflow. Android build scripts and releases keep their existing behavior.
