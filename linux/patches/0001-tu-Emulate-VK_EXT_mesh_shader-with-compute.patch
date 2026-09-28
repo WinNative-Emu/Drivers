@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: MaxsTechReview <maxjividen@gmail.com>
 Date: Sun, 27 Sep 2026 02:49:01 -0400
-Subject: [PATCH 1/2] tu: Emulate VK_EXT_mesh_shader with compute
+Subject: [PATCH 1/5] tu: Emulate VK_EXT_mesh_shader with compute
 
 Task and mesh shaders are compiled as compute shaders that write their
 outputs into a device-wide ring. A generated vertex shader then pulls one
@@ -18,13 +18,13 @@ predicated on those tables.
  src/freedreno/vulkan/tu_common.h           |   2 +
  src/freedreno/vulkan/tu_device.cc          |  68 +-
  src/freedreno/vulkan/tu_device.h           |   6 +
- src/freedreno/vulkan/tu_mesh.cc            | 974 +++++++++++++++++++++
+ src/freedreno/vulkan/tu_mesh.cc            | 992 +++++++++++++++++++++
  src/freedreno/vulkan/tu_mesh.h             | 127 +++
  src/freedreno/vulkan/tu_pipeline.cc        |  33 +-
  src/freedreno/vulkan/tu_pipeline.h         |  12 +-
  src/freedreno/vulkan/tu_shader.cc          | 188 +++-
  src/freedreno/vulkan/tu_shader.h           |  13 +-
- 14 files changed, 2016 insertions(+), 96 deletions(-)
+ 14 files changed, 2034 insertions(+), 96 deletions(-)
  create mode 100644 src/freedreno/vulkan/tu_mesh.cc
  create mode 100644 src/freedreno/vulkan/tu_mesh.h
 
@@ -1092,10 +1092,10 @@ index a0295de..2b15ae7 100644
     uint64_t global_shader_va[GLOBAL_SH_COUNT];
 diff --git a/src/freedreno/vulkan/tu_mesh.cc b/src/freedreno/vulkan/tu_mesh.cc
 new file mode 100644
-index 0000000..5949d96
+index 0000000..f6770d7
 --- /dev/null
 +++ b/src/freedreno/vulkan/tu_mesh.cc
-@@ -0,0 +1,974 @@
+@@ -0,0 +1,992 @@
 +/*
 + * Copyright © 2026 MaxsTechReview
 + * SPDX-License-Identifier: MIT
@@ -1302,6 +1302,25 @@ index 0000000..5949d96
 +                          glsl_get_length(var->type), stride);
 +}
 +
++/* Copies an output element out of its record, one vector at a time. */
++static void
++copy_output(nir_builder *b, nir_deref_instr *dst, nir_deref_instr *src)
++{
++   if (glsl_type_is_vector_or_scalar(dst->type)) {
++      nir_store_deref(b, dst, nir_load_deref(b, src), ~0);
++   } else if (glsl_type_is_struct(dst->type)) {
++      for (unsigned i = 0; i < glsl_get_length(dst->type); i++) {
++         copy_output(b, nir_build_deref_struct(b, dst, i),
++                     nir_build_deref_struct(b, src, i));
++      }
++   } else {
++      for (unsigned i = 0; i < glsl_get_length(dst->type); i++) {
++         copy_output(b, nir_build_deref_array_imm(b, dst, i),
++                     nir_build_deref_array_imm(b, src, i));
++      }
++   }
++}
++
 +nir_shader *
 +tu_mesh_build_vs(const nir_shader *ms, const struct tu_mesh_io *io,
 +                 const nir_shader_compiler_options *options)
@@ -1370,7 +1389,7 @@ index 0000000..5949d96
 +                                   pos), 0xf);
 +         writes_pos = true;
 +      } else {
-+         nir_copy_deref(b, dst, src);
++         copy_output(b, dst, src);
 +      }
 +   }
 +
@@ -1381,7 +1400,6 @@ index 0000000..5949d96
 +      nir_store_var(b, pos, nir_imm_vec4(b, 2.0, 2.0, 2.0, 1.0), 0xf);
 +   }
 +
-+   NIR_PASS(_, vs, nir_lower_var_copies);
 +   nir_shader_gather_info(vs, nir_shader_get_entrypoint(vs));
 +   return vs;
 +}

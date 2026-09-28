@@ -24,8 +24,11 @@ Balanced (`-b`) uses the WN GPU fixes and GMEM bandwidth multiplier 10. Performa
 
 - `0001` implements `VK_EXT_mesh_shader` by running task and mesh shaders as compute into a device ring that a generated vertex shader draws. Render passes with mesh draws use sysmem rendering.
 - `0002` supports a required subgroup size of 32 on A8XX's 64-wide waves, so vkd3d-proton accepts `WaveSize(32)` shaders. Each half of a wave acts as one subgroup.
+- `0003` sanitizes cube map sampling directions on A8XX. A NaN or zero direction can hang the GPU.
+- `0004` invalidates bindless descriptors through A8XX's dedicated registers, because A8XX's `SP_UPDATE_CNTL` has no bindless bits.
+- `0005` fetches A8XX command streams through a KGSL virtual BO alias that is unbound before the memory is freed. Freeing command stream memory directly leads to GPU hangs.
 
-A patch that no longer applies fails the build. Rebase it in a Mesa checkout, regenerate it with `git format-patch`, and re-run the `dEQP-VK.mesh_shader.ext.*` and `dEQP-VK.subgroups.*` groups on an Adreno device.
+A patch that no longer applies fails the build. Rebase it in a Mesa checkout, regenerate it with `git format-patch`, and re-run the `dEQP-VK.mesh_shader.ext.*`, `dEQP-VK.subgroups.*` and `dEQP-VK.texture.*cube*` groups on an Adreno device. Changes to `0005` also need a long game session on A8XX, since the hangs it prevents take minutes to appear.
 
 Displayed names start at **WN Linux Turnip 0.1.0-b** and **WN Linux Turnip 0.1.0-p**, packaged as `WN-Linux-Turnip-0.1.0-b_Axxx.zip` and `WN-Linux-Turnip-0.1.0-p_Axxx.zip`. Linux has its own semantic version series. CI increments the patch component after the highest published stable Linux release; previews and drafts reuse the next unpublished version. A repeated draft build replaces that draft, while published releases cannot be replaced. Local builds default to `0.1.0`; set `BUILD_VERSION` explicitly for another version.
 

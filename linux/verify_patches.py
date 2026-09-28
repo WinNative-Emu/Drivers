@@ -15,8 +15,15 @@ autotune = (root / 'src/freedreno/vulkan/tu_autotune.cc').read_text()
 device = (root / 'src/freedreno/vulkan/tu_device.cc').read_text()
 if not (root / 'src/freedreno/vulkan/tu_mesh.cc').exists() or '.EXT_mesh_shader = tu_has_mesh_shader(device)' not in device:
     raise SystemExit('Missing mesh shader emulation')
-if 'ir3_nir_lower_half_subgroups' not in (root / 'src/freedreno/ir3/ir3_nir.c').read_text():
+ir3_nir = (root / 'src/freedreno/ir3/ir3_nir.c').read_text()
+if 'ir3_nir_lower_half_subgroups' not in ir3_nir:
     raise SystemExit('Missing half-wave subgroups')
+if 'ir3_nir_lower_cube_coord' not in ir3_nir:
+    raise SystemExit('Missing cube coordinate sanitizing')
+if 'SP_GFX_BINDLESS_INVALIDATE' not in (root / 'src/freedreno/vulkan/tu_cmd_buffer.h').read_text():
+    raise SystemExit('Missing A8XX bindless invalidation')
+if 'kgsl_bo_create_alias' not in kgsl:
+    raise SystemExit('Missing command stream BO alias')
 checks = ['has_local = device->has_master = true']
 if variant == 'p':
     checks += ['wnturnip_set_pwr_max_constraint(', 'count % 1000 == 0', 'KGSL_CONTEXT_PWR_CONSTRAINT', 'KGSL_CMDBATCH_PWR_CONSTRAINT']

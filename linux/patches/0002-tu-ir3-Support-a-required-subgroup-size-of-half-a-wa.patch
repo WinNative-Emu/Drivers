@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: MaxsTechReview <maxjividen@gmail.com>
 Date: Sun, 27 Sep 2026 03:08:53 -0400
-Subject: [PATCH 2/2] tu,ir3: Support a required subgroup size of half a wave
+Subject: [PATCH 2/5] tu,ir3: Support a required subgroup size of half a wave
 
 A8XX only runs 64-wide waves, so the smallest subgroup size was 64 and
 vkd3d-proton rejected every compute shader declaring WaveSize(32).
