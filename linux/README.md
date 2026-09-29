@@ -28,7 +28,9 @@ Balanced (`-b`) uses the WN GPU fixes and GMEM bandwidth multiplier 10. Performa
 - `0004` invalidates bindless descriptors through A8XX's dedicated registers, because A8XX's `SP_UPDATE_CNTL` has no bindless bits.
 - `0005` fetches A8XX command streams through a KGSL virtual BO alias that is unbound before the memory is freed. Freeing command stream memory directly leads to GPU hangs.
 
-A patch that no longer applies fails the build. Rebase it in a Mesa checkout, regenerate it with `git format-patch`, and re-run the `dEQP-VK.mesh_shader.ext.*`, `dEQP-VK.subgroups.*` and `dEQP-VK.texture.*cube*` groups on an Adreno device. Changes to `0005` also need a long game session on A8XX, since the hangs it prevents take minutes to appear.
+- `0006` reuses retired A8XX command-stream BOs and their aliases instead of repeatedly unbinding/freeing them during rendering. The per-device cache matches requested size, kernel allocation flags and alignment; idle storage is capped at 256 MiB and released at device destruction. Set `TU_KGSL_IB_CACHE=false` to disable it for comparison.
+
+A patch that no longer applies fails the build. Rebase it in a Mesa checkout, regenerate it with `git format-patch`, and re-run the `dEQP-VK.mesh_shader.ext.*`, `dEQP-VK.subgroups.*` and `dEQP-VK.texture.*cube*` groups on an Adreno device. Changes to `0005` or `0006` also need a long game session on A8XX, since the hangs it prevents take minutes to appear.
 
 Displayed names start at **WN Linux Turnip 0.1.0-b** and **WN Linux Turnip 0.1.0-p**, packaged as `WN-Linux-Turnip-0.1.0-b_Axxx.zip` and `WN-Linux-Turnip-0.1.0-p_Axxx.zip`. Linux has its own semantic version series. CI increments the patch component after the highest published stable Linux release; previews and drafts reuse the next unpublished version. A repeated draft build replaces that draft, while published releases cannot be replaced. Local builds default to `0.1.0`; set `BUILD_VERSION` explicitly for another version.
 
@@ -53,3 +55,25 @@ Initial local validation built Mesa `5ff61a7646d29b54c324af0a60aa3bfb5cdd24d1`, 
 ```sh
 gh workflow run build-linux-turnip.yml --ref main -f publish=true
 ```
+
+### Rebirth investigation (2026-09-29)
+
+On a RedMagic NP06J / Adreno 840 v2, the original Linux performance driver lost
+its GPU context around the first Nibelheim gameplay frames. KGSL returned
+EDEADLK from GPU_COMMAND; the later Unreal render-thread timeout was secondary.
+Native resolution, sysmem, flushall, noubwc, full FEX TSO and single_queue did
+not prevent the failure.
+
+Keeping retired aliased IB storage alive allowed movement. Disabling that
+option in the same binary reproduced GPU loss. Bounded reuse then passed
+movement, camera changes, 3D menus and normal game exit at 2400×1504, with over
+4,000 reuses and about 10 MiB idle storage at the last gameplay sample. The
+256 MiB cache limit was exercised during exit without an observed GPU error.
+This narrows the issue to the command-storage lifecycle; it does not identify
+the precise vendor kernel/firmware defect.
+
+The patch excludes the temporary retention leak and tracing controls. Long
+1148×720 gameplay beyond 20 minutes and a warm relaunch are still pending;
+this is a bounded workaround with that validation limit, not a claim of
+exhaustive stability. When full, the cache falls back to the existing free
+path. Saves and application data were preserved.

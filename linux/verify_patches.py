@@ -24,6 +24,9 @@ if 'SP_GFX_BINDLESS_INVALIDATE' not in (root / 'src/freedreno/vulkan/tu_cmd_buff
     raise SystemExit('Missing A8XX bindless invalidation')
 if 'kgsl_bo_create_alias' not in kgsl:
     raise SystemExit('Missing command stream BO alias')
+for marker in ('kgsl_ib_cache_take', 'kgsl_ib_cache_put', 'KGSL_IB_CACHE_MAX_BYTES', 'TU_KGSL_IB_CACHE'):
+    if marker not in kgsl:
+        raise SystemExit(f'Missing bounded IB cache: {marker}')
 checks = ['has_local = device->has_master = true']
 if variant == 'p':
     checks += ['wnturnip_set_pwr_max_constraint(', 'count % 1000 == 0', 'KGSL_CONTEXT_PWR_CONSTRAINT', 'KGSL_CMDBATCH_PWR_CONSTRAINT']
